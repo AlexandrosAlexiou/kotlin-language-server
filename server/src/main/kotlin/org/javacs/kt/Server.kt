@@ -20,8 +20,9 @@ import java.io.Closeable
 import java.nio.file.Paths
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletableFuture.completedFuture
+import kotlin.system.exitProcess
 
-class KotlinLanguageServer(
+class Server(
     val config: Configuration = Configuration()
 ) : LanguageServer, LanguageClientAware, Closeable {
     private val databaseService = DatabaseService()
@@ -38,7 +39,7 @@ class KotlinLanguageServer(
 
     private lateinit var client: LanguageClient
 
-    private val async = AsyncExecutor()
+    private val asyncExecutor = AsyncExecutor(name = "server")
     private var progressFactory: Progress.Factory = Progress.Factory.None
 
     companion object {
@@ -66,7 +67,7 @@ class KotlinLanguageServer(
     @JsonDelegate
     fun getProtocolExtensionService(): KotlinProtocolExtensions = protocolExtensions
 
-    override fun initialize(params: InitializeParams): CompletableFuture<InitializeResult> = async.compute {
+    override fun initialize(params: InitializeParams): CompletableFuture<InitializeResult> = asyncExecutor.compute {
         val serverCapabilities = ServerCapabilities()
         serverCapabilities.setTextDocumentSync(TextDocumentSyncKind.Incremental)
         serverCapabilities.workspace = WorkspaceServerCapabilities()
@@ -103,13 +104,13 @@ class KotlinLanguageServer(
             serverCapabilities.renameProvider = Either.forRight(RenameOptions(false))
         }
 
+        val progress = params.workDoneToken?.let { LanguageClientProgress("Workspace folders", it, client) }
+
         @Suppress("DEPRECATION")
         val folders = params.workspaceFolders?.takeIf { it.isNotEmpty() }
             ?: params.rootUri?.let(::WorkspaceFolder)?.let(::listOf)
             ?: params.rootPath?.let(Paths::get)?.toUri()?.toString()?.let(::WorkspaceFolder)?.let(::listOf)
             ?: listOf()
-
-        val progress = params.workDoneToken?.let { LanguageClientProgress("Workspace folders", it, client) }
 
         folders.forEachIndexed { i, folder ->
             LOG.info("Adding workspace folder {}", folder.name)
@@ -158,7 +159,7 @@ class KotlinLanguageServer(
         textDocumentService.close()
         classPath.close()
         tempDirectory.close()
-        async.shutdown(awaitTermination = true)
+        asyncExecutor.shutdown(awaitTermination = true)
     }
 
     override fun shutdown(): CompletableFuture<Any> {
@@ -166,7 +167,9 @@ class KotlinLanguageServer(
         return completedFuture(null)
     }
 
-    override fun exit() {}
+    override fun exit() {
+        exitProcess(0)
+    }
 
     // Fixed in https://github.com/eclipse/lsp4j/commit/04b0c6112f0a94140e22b8b15bb5a90d5a0ed851
     // Causes issue in lsp 0.15

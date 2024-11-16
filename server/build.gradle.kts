@@ -31,7 +31,6 @@ repositories {
 
 
 dependencies {
-    // Implementation dependencies: libraries required for your application
     implementation(platform(project(":platform")))
     implementation(project(":shared"))
     implementation("org.eclipse.lsp4j:org.eclipse.lsp4j")

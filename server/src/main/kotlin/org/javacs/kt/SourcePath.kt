@@ -1,14 +1,14 @@
 package org.javacs.kt
 
-import org.javacs.kt.compiler.CompilationKind
+import org.javacs.kt.compiler.CompilationType
 import org.javacs.kt.util.AsyncExecutor
 import org.javacs.kt.util.fileExtension
 import org.javacs.kt.util.filePath
 import org.javacs.kt.util.describeURI
 import org.javacs.kt.index.SymbolIndex
-import org.javacs.kt.progress.Progress
 import com.intellij.lang.Language
 import org.javacs.kt.database.DatabaseService
+import org.javacs.kt.progress.Progress
 import org.jetbrains.kotlin.descriptors.ModuleDescriptor
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.resolve.BindingContext
@@ -24,12 +24,12 @@ class SourcePath(
     private val cp: CompilerClassPath,
     private val contentProvider: URIContentProvider,
     private val indexingConfig: IndexingConfiguration,
-    private val databaseService: DatabaseService
+    databaseService: DatabaseService
 ) {
     private val files = mutableMapOf<URI, SourceFile>()
     private val parseDataWriteLock = ReentrantLock()
 
-    private val indexAsync = AsyncExecutor()
+    private val asyncExecutor = AsyncExecutor(name = "Indexer")
     var indexEnabled: Boolean by indexingConfig::enabled
     val index = SymbolIndex(databaseService)
 
@@ -53,11 +53,11 @@ class SourcePath(
         val isTemporary: Boolean = false, // A temporary source file will not be returned by .all()
         var lastSavedFile: KtFile? = null,
     ) {
-        val extension: String? = uri.fileExtension ?: "kt" // TODO: Use language?.associatedFileType?.defaultExtension again
+        val extension: String = uri.fileExtension ?: "kt" // TODO: Use language?.associatedFileType?.defaultExtension again
         val isScript: Boolean = extension == "kts"
-        val kind: CompilationKind =
-            if (path?.fileName?.toString()?.endsWith(".gradle.kts") == true) CompilationKind.BUILD_SCRIPT
-            else CompilationKind.DEFAULT
+        val kind: CompilationType =
+            if (path?.fileName?.toString()?.endsWith(".gradle.kts") == true) CompilationType.BUILD_SCRIPT
+            else CompilationType.DEFAULT
 
         fun put(newContent: String) {
             content = newContent
@@ -197,10 +197,10 @@ class SourcePath(
         // Figure out what has changed
         val sources = all.map { files[it]!! }
         val allChanged = sources.filter { it.content != it.compiledFile?.text }
-        val (changedBuildScripts, changedSources) = allChanged.partition { it.kind == CompilationKind.BUILD_SCRIPT }
+        val (changedBuildScripts, changedSources) = allChanged.partition { it.kind == CompilationType.BUILD_SCRIPT }
 
         // Compile changed files
-        fun compileAndUpdate(changed: List<SourceFile>, kind: CompilationKind): BindingContext? {
+        fun compileAndUpdate(changed: List<SourceFile>, kind: CompilationType): BindingContext? {
             if (changed.isEmpty()) return null
 
             // Get clones of the old files, so we can remove the old declarations from the index
@@ -233,19 +233,19 @@ class SourcePath(
             }
 
             // Only index normal files, not build files
-            if (kind == CompilationKind.DEFAULT) {
+            if (kind == CompilationType.DEFAULT) {
                 refreshWorkspaceIndexes(oldFiles, parse.keys.toList())
             }
 
             return context
         }
 
-        val buildScriptsContext = compileAndUpdate(changedBuildScripts, CompilationKind.BUILD_SCRIPT)
-        val sourcesContext = compileAndUpdate(changedSources, CompilationKind.DEFAULT)
+        val buildScriptsContext = compileAndUpdate(changedBuildScripts, CompilationType.BUILD_SCRIPT)
+        val sourcesContext = compileAndUpdate(changedSources, CompilationType.DEFAULT)
 
         // Combine with past compilations
-        val same = sources - allChanged
-        val combined = listOf(buildScriptsContext, sourcesContext).filterNotNull() + same.map { it.compiledContext!! }
+        val same = sources - allChanged.toSet()
+        val combined = listOfNotNull(buildScriptsContext, sourcesContext) + same.map { it.compiledContext!! }
 
         return CompositeBindingContext.create(combined)
     }
@@ -301,7 +301,7 @@ class SourcePath(
     /**
      * Refreshes the indexes. If already done, refreshes only the declarations in the files that were changed.
      */
-    private fun refreshWorkspaceIndexes(oldFiles: List<SourceFile>, newFiles: List<SourceFile>) = indexAsync.execute {
+    private fun refreshWorkspaceIndexes(oldFiles: List<SourceFile>, newFiles: List<SourceFile>) = asyncExecutor.execute {
         if (indexEnabled) {
             val oldDeclarations = getDeclarationDescriptors(oldFiles)
             val newDeclarations = getDeclarationDescriptors(newFiles)
@@ -314,7 +314,7 @@ class SourcePath(
     /**
      * Refreshes the indexes. If already done, refreshes only the declarations in the files that were changed.
      */
-    private fun refreshDependencyIndexes(module: ModuleDescriptor) = indexAsync.execute {
+    private fun refreshDependencyIndexes(module: ModuleDescriptor) = asyncExecutor.execute {
         if (indexEnabled) {
             val declarations = getDeclarationDescriptors(files.values)
             index.refresh(module, declarations)
