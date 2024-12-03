@@ -1,15 +1,11 @@
-plugins {
-    id("java-platform")
-}
+plugins { id("java-platform") }
 
-javaPlatform {
-    allowDependencies()
-}
+javaPlatform { allowDependencies() }
 
-val kotlinVersion = "2.0.21"
+val kotlinVersion = "2.1.0"
 val exposedVersion = "0.37.3"
 val lsp4jVersion = "0.21.2"
-val guavaVersion= "33.3.0-jre"
+val guavaVersion = "33.3.0-jre"
 
 // constrain the dependencies that we use to these specific versions
 dependencies {
