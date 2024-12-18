@@ -35,12 +35,6 @@ class SourcePath(
 
     var beforeCompileCallback: () -> Unit = {}
 
-    var progressFactory: Progress.Factory = Progress.Factory.None
-        set(factory: Progress.Factory) {
-            field = factory
-            index.progressFactory = factory
-        }
-
     private inner class SourceFile(
         val uri: URI,
         var content: String,
