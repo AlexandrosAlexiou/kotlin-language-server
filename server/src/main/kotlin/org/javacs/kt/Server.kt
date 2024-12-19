@@ -1,6 +1,25 @@
 package org.javacs.kt
 
-import org.eclipse.lsp4j.*
+import java.io.Closeable
+import java.nio.file.Paths
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletableFuture.completedFuture
+import kotlin.system.exitProcess
+import org.eclipse.lsp4j.CompletionOptions
+import org.eclipse.lsp4j.ExecuteCommandOptions
+import org.eclipse.lsp4j.InitializeParams
+import org.eclipse.lsp4j.InitializeResult
+import org.eclipse.lsp4j.MessageParams
+import org.eclipse.lsp4j.MessageType
+import org.eclipse.lsp4j.RenameOptions
+import org.eclipse.lsp4j.SemanticTokensWithRegistrationOptions
+import org.eclipse.lsp4j.ServerCapabilities
+import org.eclipse.lsp4j.ServerInfo
+import org.eclipse.lsp4j.SignatureHelpOptions
+import org.eclipse.lsp4j.TextDocumentSyncKind
+import org.eclipse.lsp4j.WorkspaceFolder
+import org.eclipse.lsp4j.WorkspaceFoldersOptions
+import org.eclipse.lsp4j.WorkspaceServerCapabilities
 import org.eclipse.lsp4j.jsonrpc.messages.Either
 import org.eclipse.lsp4j.jsonrpc.services.JsonDelegate
 import org.eclipse.lsp4j.services.LanguageClient
@@ -9,18 +28,16 @@ import org.eclipse.lsp4j.services.LanguageServer
 import org.eclipse.lsp4j.services.NotebookDocumentService
 import org.javacs.kt.command.ALL_COMMANDS
 import org.javacs.kt.database.DatabaseService
+import org.javacs.kt.externalsources.ClassContentProvider
+import org.javacs.kt.externalsources.ClassPathSourceArchiveProvider
+import org.javacs.kt.externalsources.CompositeSourceArchiveProvider
+import org.javacs.kt.externalsources.JdkSourceArchiveProvider
 import org.javacs.kt.progress.LanguageClientProgress
 import org.javacs.kt.progress.Progress
 import org.javacs.kt.semantictokens.semanticTokensLegend
 import org.javacs.kt.util.AsyncExecutor
 import org.javacs.kt.util.TemporaryDirectory
 import org.javacs.kt.util.parseURI
-import org.javacs.kt.externalsources.*
-import java.io.Closeable
-import java.nio.file.Paths
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CompletableFuture.completedFuture
-import kotlin.system.exitProcess
 
 class Server(
     val config: Configuration = Configuration()

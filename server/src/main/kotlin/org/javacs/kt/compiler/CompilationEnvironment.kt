@@ -3,6 +3,18 @@
 package org.javacs.kt.compiler
 
 import com.intellij.openapi.util.Disposer
+import java.io.Closeable
+import java.io.File
+import java.net.URLClassLoader
+import java.nio.file.Path
+import kotlin.script.dependencies.Environment
+import kotlin.script.dependencies.ScriptContents
+import kotlin.script.experimental.dependencies.DependenciesResolver
+import kotlin.script.experimental.dependencies.ScriptDependencies
+import kotlin.script.experimental.host.ScriptingHostConfiguration
+import kotlin.script.experimental.host.configurationDependencies
+import kotlin.script.experimental.jvm.JvmDependency
+import kotlin.script.experimental.jvm.defaultJvmScriptingHostConfiguration
 import org.javacs.kt.CompilerConfiguration
 import org.javacs.kt.LOG
 import org.javacs.kt.ScriptsConfiguration
@@ -17,7 +29,14 @@ import org.jetbrains.kotlin.cli.jvm.config.configureJdkClasspathRoots
 import org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar
 import org.jetbrains.kotlin.compiler.plugin.ComponentRegistrar
 import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
-import org.jetbrains.kotlin.config.*
+import org.jetbrains.kotlin.config.ApiVersion
+import org.jetbrains.kotlin.config.CommonConfigurationKeys
+import org.jetbrains.kotlin.config.CompilerConfiguration as CompilerConfigurationApi
+import org.jetbrains.kotlin.config.JVMConfigurationKeys
+import org.jetbrains.kotlin.config.JvmTarget
+import org.jetbrains.kotlin.config.LanguageFeature
+import org.jetbrains.kotlin.config.LanguageVersion
+import org.jetbrains.kotlin.config.LanguageVersionSettingsImpl
 import org.jetbrains.kotlin.container.ComponentProvider
 import org.jetbrains.kotlin.extensions.StorageComponentContainerContributor
 import org.jetbrains.kotlin.metadata.jvm.deserialization.JvmProtoBufUtil
@@ -33,19 +52,6 @@ import org.jetbrains.kotlin.scripting.definitions.KotlinScriptDefinition
 import org.jetbrains.kotlin.scripting.definitions.ScriptDefinition
 import org.jetbrains.kotlin.scripting.definitions.getEnvironment
 import org.jetbrains.kotlin.scripting.resolve.KotlinScriptDefinitionFromAnnotatedTemplate
-import java.io.Closeable
-import java.io.File
-import java.net.URLClassLoader
-import java.nio.file.Path
-import kotlin.script.dependencies.Environment
-import kotlin.script.dependencies.ScriptContents
-import kotlin.script.experimental.dependencies.DependenciesResolver
-import kotlin.script.experimental.dependencies.ScriptDependencies
-import kotlin.script.experimental.host.ScriptingHostConfiguration
-import kotlin.script.experimental.host.configurationDependencies
-import kotlin.script.experimental.jvm.JvmDependency
-import kotlin.script.experimental.jvm.defaultJvmScriptingHostConfiguration
-import org.jetbrains.kotlin.config.CompilerConfiguration as CompilerConfigurationApi
 
 /**
  * Kotlin compiler APIs used to parse, analyze and compile
