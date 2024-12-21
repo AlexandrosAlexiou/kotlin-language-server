@@ -10,6 +10,7 @@ import java.io.File
 import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.CompletableFuture
 
 /**
  * Manages the class path (compiled JARs, etc), the Java source path
@@ -51,35 +52,45 @@ class CompilerClassPath(
         updateBuildScriptClassPath: Boolean = true,
         updateJavaSourcePath: Boolean = true
     ): Boolean {
-        // TODO: Fetch class path and build script class path concurrently (and asynchronously)
         val resolver = defaultClassPathResolver(workspaceRoots, databaseService.db)
         var refreshCompiler = updateJavaSourcePath
+        val asyncExecutor = AsyncExecutor()
 
-        if (updateClassPath) {
-            val newClassPath = resolver.classpathOrEmpty
-            if (newClassPath != classPath) {
-                synchronized(classPath) {
-                    syncPaths(classPath, newClassPath, "class path") { it.compiledJar }
+        val classPathFuture = if (updateClassPath) {
+            asyncExecutor.compute {
+                val newClassPath = resolver.classpathOrEmpty
+                if (newClassPath != classPath) {
+                    synchronized(classPath) {
+                        syncPaths(classPath, newClassPath, "class path") { it.compiledJar }
+                    }
+                    refreshCompiler = true
                 }
-                refreshCompiler = true
-            }
 
-            async.compute {
-                val newClassPathWithSources = resolver.classpathWithSources
-                synchronized(classPath) {
-                    syncPaths(classPath, newClassPathWithSources, "class path with sources") { it.compiledJar }
+                asyncExecutor.compute {
+                    val newClassPathWithSources = resolver.classpathWithSources
+                    synchronized(classPath) {
+                        syncPaths(classPath, newClassPathWithSources, "class path with sources") { it.compiledJar }
+                    }
                 }
             }
+        } else {
+            CompletableFuture.completedFuture(null)
         }
 
-        if (updateBuildScriptClassPath) {
-            LOG.info("Update build script path")
-            val newBuildScriptClassPath = resolver.buildScriptClasspathOrEmpty
-            if (newBuildScriptClassPath != buildScriptClassPath) {
-                syncPaths(buildScriptClassPath, newBuildScriptClassPath, "build script class path") { it }
-                refreshCompiler = true
+        val buildScriptClassPathFuture = if (updateBuildScriptClassPath) {
+            asyncExecutor.compute {
+                LOG.info("Update build script path")
+                val newBuildScriptClassPath = resolver.buildScriptClasspathOrEmpty
+                if (newBuildScriptClassPath != buildScriptClassPath) {
+                    syncPaths(buildScriptClassPath, newBuildScriptClassPath, "build script class path") { it }
+                    refreshCompiler = true
+                }
             }
+        } else {
+            CompletableFuture.completedFuture(null)
         }
+
+        CompletableFuture.allOf(classPathFuture, buildScriptClassPathFuture).join()
 
         if (refreshCompiler) {
             LOG.info("Reinstantiating compiler")
@@ -97,6 +108,7 @@ class CompilerClassPath(
 
         return refreshCompiler
     }
+
 
     /** Synchronizes the given two path sets and logs the differences. */
     private fun <T> syncPaths(dest: MutableSet<T>, new: Set<T>, name: String, toPath: (T) -> Path) {
